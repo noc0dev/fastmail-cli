@@ -621,7 +621,7 @@ def add_connection_opts(p: argparse.ArgumentParser) -> None:
     p.add_argument("--account", default=env_default("JMAP_ACCOUNT", "primary"), help="Account id or 'primary'")
     p.add_argument("--timeout", type=float, default=float(env_default("JMAP_TIMEOUT", "30")), help="HTTP timeout seconds")
     p.add_argument("--insecure", action="store_true", help="Skip TLS verification")
-    p.add_argument("--json", choices=["compact", "pretty", "jsonl"], default="compact", help="JSON output style")
+    p.add_argument("--json", choices=["compact", "pretty", "jsonl"], help="JSON output style")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -637,9 +637,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("session.get", help="Return JMAP session object")
     add_connection_opts(s)
+    s.set_defaults(json="compact")
 
     eq = sub.add_parser("email.query", help="Email/query")
     add_connection_opts(eq)
+    eq.set_defaults(json="compact")
     eq.add_argument("--filter", help="EmailQueryFilter JSON (inline, @file, @-)")
     eq.add_argument("--sort", help="JSON array of Comparator objects")
     eq.add_argument("--limit", type=int, default=10)
@@ -649,16 +651,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     eg = sub.add_parser("email.get", help="Email/get")
     add_connection_opts(eg)
+    eg.set_defaults(json="compact")
     eg.add_argument("--ids", required=True, help="JSON array of ids or @file/@-")
     eg.add_argument("--properties", help="JSON array of properties")
 
     ech = sub.add_parser("email.changes", help="Email/changes")
     add_connection_opts(ech)
+    ech.set_defaults(json="compact")
     ech.add_argument("--since-state", required=True, help="sinceState string")
     ech.add_argument("--max-changes", type=int, help="Maximum changes")
 
     eqc = sub.add_parser("email.query-changes", help="Email/queryChanges")
     add_connection_opts(eqc)
+    eqc.set_defaults(json="compact")
     eqc.add_argument("--since-query-state", required=True, help="sinceQueryState string")
     eqc.add_argument("--filter", help="EmailQueryFilter JSON (inline/@file/@-)")
     eqc.add_argument("--sort", help="JSON array of Comparator objects")
@@ -669,6 +674,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     mq = sub.add_parser("mailbox.query", help="Mailbox/query")
     add_connection_opts(mq)
+    mq.set_defaults(json="compact")
     mq.add_argument("--filter", help="MailboxQueryFilter JSON (inline/@file/@-)")
     mq.add_argument("--sort", help="JSON array of Comparator objects")
     mq.add_argument("--limit", type=int, default=10)
@@ -676,16 +682,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     tg = sub.add_parser("thread.get", help="Thread/get")
     add_connection_opts(tg)
+    tg.set_defaults(json="compact")
     tg.add_argument("--ids", required=True, help="JSON array of thread ids or @file/@-")
 
     ss = sub.add_parser("searchsnippet.get", help="SearchSnippet/get")
     add_connection_opts(ss)
+    ss.set_defaults(json="compact")
     ss.add_argument("--email-ids", required=True, help="JSON array of email ids")
     ss.add_argument("--filter", help="EmailQueryFilter JSON")
     ss.add_argument("--properties", nargs="+", help="Snippet properties")
 
     ev = sub.add_parser("events.listen", help="Listen to JMAP event stream")
     add_connection_opts(ev)
+    ev.set_defaults(json="jsonl")
     ev.add_argument("--since", help="lastEventId")
     ev.add_argument("--max-events", type=int, help="Max events before exit")
     ev.add_argument("--types", help="Comma-separated event types (default *)")
@@ -703,6 +712,29 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Enforce json mode compatibility before doing any work
+    streaming_commands = {"events.listen"}
+    if args.command in streaming_commands and args.json != "jsonl":
+        err = envelope(
+            False,
+            args.command,
+            vars(args),
+            meta_block(getattr(args, "host", "n/a"), "unknown", []),
+            error={"type": "validationError", "message": "--json must be jsonl for streaming commands", "details": {}},
+        )
+        json_dump(err, "compact")
+        return 2
+    if args.command not in streaming_commands and args.json == "jsonl":
+        err = envelope(
+            False,
+            args.command,
+            vars(args),
+            meta_block(getattr(args, "host", "unknown"), "unknown", []),
+            error={"type": "validationError", "message": "jsonl is only supported for streaming commands", "details": {}},
+        )
+        json_dump(err, "compact")
+        return 2
 
     if args.command in {"help", "describe"}:
         # No auth needed for introspection
