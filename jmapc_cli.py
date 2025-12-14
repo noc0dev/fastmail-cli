@@ -389,7 +389,7 @@ def handle_searchsnippet_get(args: argparse.Namespace) -> Tuple[int, Dict[str, A
         account_id = resolve_account_id(session_json, args.account)
         ids = parse_json_arg(args.email_ids)
         filt = parse_json_arg(args.filter)
-        call = SearchSnippetGet(ids=ids, filter=filt, properties=args.properties)
+        call = SearchSnippetGet(ids=ids, filter=filt)
         using, mrs = jmap_request(client, account_id, call, raise_errors=True)
         resp = mrs[0].response
         capabilities_server = session_json.get("capabilities", {}).keys()
@@ -474,8 +474,13 @@ def handle_events_listen(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]
     try:
         client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
         account_id = resolve_account_id(session_json, args.account)
-        # Recreate client with last_event_id
-        client = Client.create_with_api_token(args.host, args.api_token, last_event_id=args.since)
+        from jmapc.client import EventSourceConfig
+        esc = EventSourceConfig(
+            types=args.types or "*",
+            closeafter=args.closeafter,
+            ping=args.ping,
+        )
+        client = Client.create_with_api_token(args.host, args.api_token, last_event_id=args.since, event_source_config=esc)
         meta_base = meta_block(
             args.host,
             account_id,
@@ -510,7 +515,7 @@ def handle_events_listen(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]
 
 def handle_help(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
     data = {"commands": [{"name": k, "summary": v["summary"]} for k, v in COMMAND_SPECS().items()]}
-    meta = meta_block(args.host, "n/a", [], None)
+    meta = {"timestamp": utc_now_iso(), "host": "n/a", "accountId": "n/a", "capabilitiesUsed": []}
     return 0, envelope(True, "help", vars(args), meta, data=data)
 
 
@@ -520,7 +525,7 @@ def handle_describe(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         err = {"type": "validationError", "message": f"Unknown command {args.command_name}", "details": {}}
         return 2, envelope(False, "describe", vars(args), meta_block(args.host, "unknown", []), error=err)
     data = {"command": args.command_name, **specs[args.command_name]}
-    meta = meta_block(args.host, "n/a", [], None)
+    meta = {"timestamp": utc_now_iso(), "host": "n/a", "accountId": "n/a", "capabilitiesUsed": []}
     return 0, envelope(True, "describe", vars(args), meta, data=data)
 
 
@@ -624,11 +629,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     h = sub.add_parser("help", help="List commands")
-    add_connection_opts(h)
+    h.add_argument("--json", choices=["compact", "pretty"], default="compact", help="JSON output style")
 
     d = sub.add_parser("describe", help="Describe a command")
-    add_connection_opts(d)
     d.add_argument("command_name")
+    d.add_argument("--json", choices=["compact", "pretty"], default="compact", help="JSON output style")
 
     s = sub.add_parser("session.get", help="Return JMAP session object")
     add_connection_opts(s)
@@ -683,6 +688,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_connection_opts(ev)
     ev.add_argument("--since", help="lastEventId")
     ev.add_argument("--max-events", type=int, help="Max events before exit")
+    ev.add_argument("--types", help="Comma-separated event types (default *)")
+    ev.add_argument("--closeafter", default="no", help="closeafter param (no|state|push)")
+    ev.add_argument("--ping", type=int, default=0, help="ping interval seconds (0=default)")
 
     pl = sub.add_parser("pipeline.run", help="Run raw multi-call pipeline")
     add_connection_opts(pl)
@@ -695,6 +703,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command in {"help", "describe"}:
+        # No auth needed for introspection
+        args_dict = vars(args)
+        code, payload = command_map[args.command](args)
+        json_dump(payload, args.json)
+        return code
 
     if not args.api_token:
         err = envelope(
@@ -729,7 +744,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     code, payload = handler(args)
     if payload is not None:
         if args.json == "jsonl" and args.command != "events.listen":
-            # jsonl only makes sense for streaming; treat as validation error
             err = envelope(
                 False,
                 args.command,
@@ -739,7 +753,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             json_dump(err, "compact")
             return 2
-        json_dump(payload, args.json if args.command == "events.listen" else ("compact" if args.json == "jsonl" else args.json))
+        json_dump(payload, args.json)
     return code
 
 
