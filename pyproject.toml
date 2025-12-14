@@ -1,0 +1,13 @@
+[project]
+name = "fm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jmapc>=0.2.23",
+]
+
+[project.scripts]
+jmapc-cli = "jmapc_cli:main"
+fastmail-cli = "fastmail_cli:main"
