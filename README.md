@@ -44,6 +44,10 @@ fastmail-cli mailbox.query                     # list mailboxes
 
 All output is JSON with `ok`, `command`, `meta`, and `data`/`error` fields.
 
+## Required Reading
+
+- [Claude Code Email Productivity: MCP Agents](https://harper.blog/2025/12/03/claude-code-email-productivity-mcp-agents/)
+
 ## License
 
 Apache 2.0
