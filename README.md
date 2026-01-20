@@ -66,6 +66,21 @@ fastmail-cli email.draft \
   --body @report.txt
 ```
 
+### Reply to Existing Emails
+
+```bash
+# Reply to an email (auto-threads, auto-sets subject)
+fastmail-cli email.reply \
+  --id "M12345" \
+  --body "Thanks for reaching out..."
+
+# Reply-all to include all original recipients
+fastmail-cli email.reply \
+  --id "M12345" \
+  --body "Replying to everyone..." \
+  --reply-all
+```
+
 All output is JSON with `ok`, `command`, `meta`, and `data`/`error` fields.
 
 ## Required Reading
