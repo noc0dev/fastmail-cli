@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="asset/mascot.png" alt="Fastmail CLI mascot" width="300">
+  <img src="assets/mascot.png" alt="Fastmail CLI mascot" width="300">
 </p>
 
 <h1 align="center">fastmail-cli</h1>
