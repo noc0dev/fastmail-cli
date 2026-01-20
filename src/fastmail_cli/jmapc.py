@@ -260,16 +260,11 @@ def handle_email_get(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
 def find_drafts_mailbox_id(client: Client, account_id: str) -> str:
     """Find the Drafts mailbox ID by querying for role=drafts."""
     call = MailboxQuery(filter={"role": "drafts"})
-    using = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
-    resp = client.request(
-        [call.to_api(account_id=account_id)],
-        using=using,
-        raise_errors=True,
-    )
-    mrs = resp.method_responses
-    if not mrs or not mrs[0].response.ids:
+    _, mrs = jmap_request(client, account_id, call, raise_errors=True)
+    resp = mrs[0].response
+    if not resp.ids:
         raise ValueError("Could not find Drafts mailbox")
-    return mrs[0].response.ids[0]
+    return resp.ids[0]
 
 
 def parse_email_addresses(val: Optional[str]) -> Optional[List[EmailAddress]]:
@@ -334,14 +329,7 @@ def handle_email_draft(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
 
         # Create the draft using EmailSet
         call = EmailSet(create={"draft": email})
-        using = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
-        resp = client.request(
-            [call.to_api(account_id=account_id)],
-            using=using,
-            raise_errors=True,
-        )
-
-        mrs = resp.method_responses
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
         set_response = mrs[0].response
 
         capabilities_server = session_json.get("capabilities", {}).keys()
@@ -383,17 +371,12 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
         # Fetch the original email
         original_props = ["from", "to", "cc", "subject", "messageId", "references", "replyTo"]
         call = EmailGet(ids=[args.id], properties=original_props)
-        using = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"]
-        resp = client.request(
-            [call.to_api(account_id=account_id)],
-            using=using,
-            raise_errors=True,
-        )
-        mrs = resp.method_responses
-        if not mrs or not mrs[0].response.data:
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
+        resp = mrs[0].response
+        if not resp.data:
             raise ValueError(f"Email not found: {args.id}")
 
-        original = mrs[0].response.data[0]
+        original = resp.data[0]
 
         # Determine reply recipient (use reply-to if available, else from)
         if args.to:
@@ -467,13 +450,7 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
 
         # Create the draft using EmailSet
         call = EmailSet(create={"draft": email})
-        resp = client.request(
-            [call.to_api(account_id=account_id)],
-            using=using,
-            raise_errors=True,
-        )
-
-        mrs = resp.method_responses
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
         set_response = mrs[0].response
 
         capabilities_server = session_json.get("capabilities", {}).keys()
@@ -892,7 +869,7 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
 
 def add_connection_opts(p: argparse.ArgumentParser) -> None:
     p.add_argument("--host", default=env_default("JMAP_HOST", "api.fastmail.com"), help="JMAP host")
-    p.add_argument("--api-token", default=env_default("JMAP_API_TOKEN", env_default("FASTMAIL_READONLY_API_TOKEN", None)), help="JMAP API token (read-only)")
+    p.add_argument("--api-token", default=env_default("JMAP_API_TOKEN", env_default("FASTMAIL_API_TOKEN", env_default("FASTMAIL_READONLY_API_TOKEN", None))), help="JMAP API token")
     p.add_argument("--account", default=env_default("JMAP_ACCOUNT", "primary"), help="Account id or 'primary'")
     p.add_argument("--timeout", type=float, default=float(env_default("JMAP_TIMEOUT", "30")), help="HTTP timeout seconds")
     p.add_argument("--insecure", action="store_true", help="Skip TLS verification")

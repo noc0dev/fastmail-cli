@@ -38,7 +38,7 @@ uvx fastmail-cli help
 ## Setup
 
 ```bash
-export FASTMAIL_READONLY_API_TOKEN="fmu1-..."  # from Fastmail Settings → Integrations
+export FASTMAIL_API_TOKEN="fmu1-..."  # from Fastmail Settings → Integrations
 ```
 
 ## Usage
