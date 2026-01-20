@@ -5,7 +5,7 @@
 <h1 align="center">fastmail-cli</h1>
 
 <p align="center">
-  <strong>Email access for AI agents via JMAP. Draft responses without sending.</strong>
+  <strong>Read-only email access for AI agents via JMAP, and draft responses.</strong>
 </p>
 
 <p align="center">
