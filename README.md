@@ -5,7 +5,7 @@
 <h1 align="center">fastmail-cli</h1>
 
 <p align="center">
-  <strong>Read-only email access for AI agents via JMAP.</strong>
+  <strong>Read-only email access for AI agents via JMAP, and draft responses.</strong>
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@ uvx fastmail-cli help
 ## Setup
 
 ```bash
-export FASTMAIL_READONLY_API_TOKEN="fmu1-..."  # from Fastmail Settings → Integrations
+export FASTMAIL_API_TOKEN="fmu1-..."  # from Fastmail Settings → Integrations
 ```
 
 ## Usage
@@ -48,6 +48,37 @@ fastmail-cli help                              # list commands
 fastmail-cli email.query --limit 5             # recent emails
 fastmail-cli email.get --ids '["M123"]'        # get by ID
 fastmail-cli mailbox.query                     # list mailboxes
+```
+
+### Create Drafts (Safe for AI Agents)
+
+```bash
+# Create a draft - human reviews in Fastmail UI before sending
+fastmail-cli email.draft \
+  --to "recipient@example.com" \
+  --subject "Re: Your question" \
+  --body "Here's the response..."
+
+# Draft with body from file
+fastmail-cli email.draft \
+  --to "user@example.com" \
+  --subject "Report" \
+  --body @report.txt
+```
+
+### Draft Replies to Existing Emails
+
+```bash
+# Reply to an email (auto-threads, auto-sets subject)
+fastmail-cli email.draft-reply \
+  --id "M12345" \
+  --body "Thanks for reaching out..."
+
+# Reply-all to include all original recipients
+fastmail-cli email.draft-reply \
+  --id "M12345" \
+  --body "Replying to everyone..." \
+  --reply-all
 ```
 
 All output is JSON with `ok`, `command`, `meta`, and `data`/`error` fields.

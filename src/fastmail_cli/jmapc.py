@@ -26,11 +26,12 @@ from jmapc.methods.email import (
     EmailQuery,
     EmailChanges,
     EmailQueryChanges,
+    EmailSet,
 )
 from jmapc.methods.mailbox import MailboxQuery
 from jmapc.methods.thread import ThreadGet
 from jmapc.methods.search_snippet import SearchSnippetGet
-from jmapc.models import Comparator
+from jmapc.models import Comparator, Email, EmailAddress, EmailBodyValue
 
 
 def utc_now_iso() -> str:
@@ -254,6 +255,254 @@ def handle_email_get(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
     except Exception as exc:
         err = {"type": "runtimeError", "message": str(exc), "details": {}}
         return 6, envelope(False, "email.get", vars(args), meta_block(args.host, "unknown", []), error=err)
+
+
+def find_drafts_mailbox_id(client: Client, account_id: str) -> str:
+    """Find the Drafts mailbox ID by querying for role=drafts."""
+    call = MailboxQuery(filter={"role": "drafts"})
+    _, mrs = jmap_request(client, account_id, call, raise_errors=True)
+    resp = mrs[0].response
+    if not resp.ids:
+        raise ValueError("Could not find Drafts mailbox")
+    return resp.ids[0]
+
+
+def parse_email_addresses(val: Optional[str]) -> Optional[List[EmailAddress]]:
+    """Parse comma-separated email addresses into EmailAddress objects."""
+    if not val:
+        return None
+    addresses = []
+    for addr in val.split(","):
+        addr = addr.strip()
+        if not addr:
+            continue
+        # Handle "Name <email>" format
+        if "<" in addr and ">" in addr:
+            name = addr[:addr.index("<")].strip().strip('"')
+            email = addr[addr.index("<")+1:addr.index(">")].strip()
+            addresses.append(EmailAddress(name=name or None, email=email))
+        else:
+            addresses.append(EmailAddress(email=addr))
+    return addresses if addresses else None
+
+
+def handle_email_draft(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
+    """Create a draft email without sending it."""
+    try:
+        client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
+        account_id = resolve_account_id(session_json, args.account)
+
+        # Find the Drafts mailbox
+        drafts_mailbox_id = find_drafts_mailbox_id(client, account_id)
+
+        # Parse recipients
+        to_addrs = parse_email_addresses(args.to)
+        cc_addrs = parse_email_addresses(args.cc) if args.cc else None
+        bcc_addrs = parse_email_addresses(args.bcc) if args.bcc else None
+
+        # Parse from address
+        from_addr = parse_email_addresses(args.mail_from) if args.mail_from else None
+
+        # Build body - read from file (@file) or stdin (@-)
+        if args.body and args.body.startswith("@") and args.body != "@-":
+            with open(args.body[1:], "r", encoding="utf-8") as fh:
+                body_value = fh.read()
+        elif args.body == "@-":
+            body_value = sys.stdin.read()
+        else:
+            body_value = args.body or ""
+
+        # Create the email object
+        email = Email(
+            mailbox_ids={drafts_mailbox_id: True},
+            keywords={"$draft": True},
+            mail_from=from_addr,
+            to=to_addrs,
+            cc=cc_addrs,
+            bcc=bcc_addrs,
+            subject=args.subject,
+            body_values={"body": EmailBodyValue(value=body_value)},
+            text_body=[{"partId": "body", "type": "text/plain"}],
+            in_reply_to=parse_json_arg(args.in_reply_to) if args.in_reply_to else None,
+            references=parse_json_arg(args.references) if args.references else None,
+        )
+
+        # Create the draft using EmailSet
+        call = EmailSet(create={"draft": email})
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
+        set_response = mrs[0].response
+
+        capabilities_server = session_json.get("capabilities", {}).keys()
+        meta = meta_block(args.host, account_id, using, capabilities_server)
+
+        # Extract created email info (convert objects to dicts for JSON serialization)
+        created = {}
+        if set_response.created:
+            for k, v in set_response.created.items():
+                created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        not_created = {}
+        if set_response.not_created:
+            for k, v in set_response.not_created.items():
+                not_created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        result_data = {
+            "created": created,
+            "notCreated": not_created,
+            "newState": set_response.new_state,
+        }
+
+        return 0, envelope(True, "email.draft", vars(args), meta, data=result_data)
+    except ValueError as exc:
+        err = {"type": "validationError", "message": str(exc), "details": {}}
+        return 2, envelope(False, "email.draft", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except ClientError as exc:
+        err = {
+            "type": "jmapError",
+            "message": str(exc),
+            "details": {"responses": client_error_details(exc)},
+        }
+        return 5, envelope(False, "email.draft", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except requests.HTTPError as exc:
+        code = http_exit_code(exc.response.status_code)
+        err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
+        return code, envelope(False, "email.draft", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except Exception as exc:
+        err = {"type": "runtimeError", "message": str(exc), "details": {}}
+        return 6, envelope(False, "email.draft", vars(args), meta_block(args.host, "unknown", []), error=err)
+
+
+def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
+    """Create a draft reply to an existing email."""
+    try:
+        client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
+        account_id = resolve_account_id(session_json, args.account)
+
+        # Fetch the original email
+        original_props = ["from", "to", "cc", "subject", "messageId", "references", "replyTo"]
+        call = EmailGet(ids=[args.id], properties=original_props)
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
+        resp = mrs[0].response
+        if not resp.data:
+            raise ValueError(f"Email not found: {args.id}")
+
+        original = resp.data[0]
+
+        # Determine reply recipient (use reply-to if available, else from)
+        if args.to:
+            to_addrs = parse_email_addresses(args.to)
+        elif original.reply_to:
+            to_addrs = original.reply_to
+        elif original.mail_from:
+            to_addrs = original.mail_from
+        else:
+            raise ValueError("Could not determine reply recipient")
+
+        # Handle reply-all: include original To and CC (excluding self)
+        cc_addrs = None
+        if args.reply_all:
+            all_cc = []
+            if original.to:
+                all_cc.extend(original.to)
+            if original.cc:
+                all_cc.extend(original.cc)
+            # Filter out the reply-to address to avoid duplicates
+            if to_addrs and all_cc:
+                to_emails = {a.email for a in to_addrs if a.email}
+                all_cc = [a for a in all_cc if a.email not in to_emails]
+            if all_cc:
+                cc_addrs = all_cc
+
+        # Build subject with Re: prefix
+        if args.subject:
+            subject = args.subject
+        elif original.subject:
+            subj = original.subject
+            subject = subj if subj.lower().startswith("re:") else f"Re: {subj}"
+        else:
+            subject = "Re:"
+
+        # Build threading headers
+        in_reply_to = None
+        references = None
+        if original.message_id:
+            in_reply_to = original.message_id
+            # Build references: original references + original message-id
+            if original.references:
+                references = original.references + original.message_id
+            else:
+                references = original.message_id
+
+        # Parse from address if provided, otherwise let server use account default
+        from_addr = parse_email_addresses(args.mail_from) if args.mail_from else None
+
+        # Find the Drafts mailbox
+        drafts_mailbox_id = find_drafts_mailbox_id(client, account_id)
+
+        # Build body - read from file (@file) or stdin (@-)
+        if args.body and args.body.startswith("@") and args.body != "@-":
+            with open(args.body[1:], "r", encoding="utf-8") as fh:
+                body_value = fh.read()
+        elif args.body == "@-":
+            body_value = sys.stdin.read()
+        else:
+            body_value = args.body or ""
+
+        # Create the email object
+        email = Email(
+            mailbox_ids={drafts_mailbox_id: True},
+            keywords={"$draft": True},
+            mail_from=from_addr,
+            to=to_addrs,
+            cc=cc_addrs,
+            subject=subject,
+            body_values={"body": EmailBodyValue(value=body_value)},
+            text_body=[{"partId": "body", "type": "text/plain"}],
+            in_reply_to=in_reply_to,
+            references=references,
+        )
+
+        # Create the draft using EmailSet
+        call = EmailSet(create={"draft": email})
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
+        set_response = mrs[0].response
+
+        capabilities_server = session_json.get("capabilities", {}).keys()
+        meta = meta_block(args.host, account_id, using, capabilities_server)
+
+        # Extract created email info (convert objects to dicts for JSON serialization)
+        created = {}
+        if set_response.created:
+            for k, v in set_response.created.items():
+                created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        not_created = {}
+        if set_response.not_created:
+            for k, v in set_response.not_created.items():
+                not_created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        result_data = {
+            "created": created,
+            "notCreated": not_created,
+            "newState": set_response.new_state,
+            "inReplyTo": args.id,
+            "subject": subject,
+        }
+
+        return 0, envelope(True, "email.draft-reply", vars(args), meta, data=result_data)
+    except ValueError as exc:
+        err = {"type": "validationError", "message": str(exc), "details": {}}
+        return 2, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except ClientError as exc:
+        err = {
+            "type": "jmapError",
+            "message": str(exc),
+            "details": {"responses": client_error_details(exc)},
+        }
+        return 5, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except requests.HTTPError as exc:
+        code = http_exit_code(exc.response.status_code)
+        err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
+        return code, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except Exception as exc:
+        err = {"type": "runtimeError", "message": str(exc), "details": {}}
+        return 6, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
 
 
 def handle_mailbox_query(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
@@ -558,6 +807,30 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
                 {"name": "properties", "type": "json", "required": False},
             ],
         },
+        "email.draft": {
+            "summary": "Create draft email (does not send)",
+            "options": [
+                {"name": "to", "type": "string", "required": True},
+                {"name": "subject", "type": "string", "required": True},
+                {"name": "body", "type": "string", "required": False},
+                {"name": "cc", "type": "string", "required": False},
+                {"name": "bcc", "type": "string", "required": False},
+                {"name": "from", "type": "string", "required": False},
+                {"name": "in_reply_to", "type": "json", "required": False},
+                {"name": "references", "type": "json", "required": False},
+            ],
+        },
+        "email.draft-reply": {
+            "summary": "Create draft reply to existing email (auto-threads)",
+            "options": [
+                {"name": "id", "type": "string", "required": True},
+                {"name": "body", "type": "string", "required": True},
+                {"name": "reply_all", "type": "flag", "required": False},
+                {"name": "to", "type": "string", "required": False},
+                {"name": "subject", "type": "string", "required": False},
+                {"name": "from", "type": "string", "required": False},
+            ],
+        },
         "email.changes": {
             "summary": "Email/changes",
             "options": [
@@ -617,7 +890,7 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
 
 def add_connection_opts(p: argparse.ArgumentParser) -> None:
     p.add_argument("--host", default=env_default("JMAP_HOST", "api.fastmail.com"), help="JMAP host")
-    p.add_argument("--api-token", default=env_default("JMAP_API_TOKEN", env_default("FASTMAIL_READONLY_API_TOKEN", None)), help="JMAP API token (read-only)")
+    p.add_argument("--api-token", default=env_default("JMAP_API_TOKEN", env_default("FASTMAIL_API_TOKEN", env_default("FASTMAIL_READONLY_API_TOKEN", None))), help="JMAP API token")
     p.add_argument("--account", default=env_default("JMAP_ACCOUNT", "primary"), help="Account id or 'primary'")
     p.add_argument("--timeout", type=float, default=float(env_default("JMAP_TIMEOUT", "30")), help="HTTP timeout seconds")
     p.add_argument("--insecure", action="store_true", help="Skip TLS verification")
@@ -625,7 +898,7 @@ def add_connection_opts(p: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="jmapc-cli", description="Read-only JMAP CLI (JSON in/out)")
+    parser = argparse.ArgumentParser(prog="fastmail-cli", description="Read-only JMAP CLI (JSON in/out)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     h = sub.add_parser("help", help="List commands")
@@ -654,6 +927,28 @@ def build_parser() -> argparse.ArgumentParser:
     eg.set_defaults(json="compact")
     eg.add_argument("--ids", required=True, help="JSON array of ids or @file/@-")
     eg.add_argument("--properties", help="JSON array of properties")
+
+    ed = sub.add_parser("email.draft", help="Create draft email (does not send)")
+    add_connection_opts(ed)
+    ed.set_defaults(json="compact")
+    ed.add_argument("--to", required=True, help="Recipient(s), comma-separated")
+    ed.add_argument("--subject", required=True, help="Email subject")
+    ed.add_argument("--body", help="Email body text (or @file/@- for stdin)")
+    ed.add_argument("--cc", help="CC recipient(s), comma-separated")
+    ed.add_argument("--bcc", help="BCC recipient(s), comma-separated")
+    ed.add_argument("--from", dest="mail_from", help="From address (default: account primary)")
+    ed.add_argument("--in-reply-to", help="Message-ID(s) JSON array for threading")
+    ed.add_argument("--references", help="References JSON array for threading")
+
+    er = sub.add_parser("email.draft-reply", help="Create draft reply to existing email")
+    add_connection_opts(er)
+    er.set_defaults(json="compact")
+    er.add_argument("--id", required=True, help="Email ID to reply to")
+    er.add_argument("--body", required=True, help="Reply body text (or @file/@- for stdin)")
+    er.add_argument("--reply-all", action="store_true", help="Reply to all recipients")
+    er.add_argument("--to", help="Override recipient(s)")
+    er.add_argument("--subject", help="Override subject")
+    er.add_argument("--from", dest="mail_from", help="From address (default: account default)")
 
     ech = sub.add_parser("email.changes", help="Email/changes")
     add_connection_opts(ech)
@@ -719,6 +1014,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "session.get": handle_session_get,
         "email.query": handle_email_query,
         "email.get": handle_email_get,
+        "email.draft": handle_email_draft,
+        "email.draft-reply": handle_email_draft_reply,
         "email.changes": handle_email_changes,
         "email.query-changes": handle_email_query_changes,
         "mailbox.query": handle_mailbox_query,

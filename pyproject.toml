@@ -1,7 +1,7 @@
 [project]
 name = "fastmail-cli"
-version = "0.1.1"
-description = "Read-only CLI for agents to access Fastmail via JMAP"
+version = "0.2.0"
+description = "CLI for AI agents to access Fastmail via JMAP - draft responses without sending"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"
@@ -30,7 +30,7 @@ Repository = "https://github.com/noc0dev/fastmail-cli"
 Issues = "https://github.com/noc0dev/fastmail-cli/issues"
 
 [project.scripts]
-fastmail-cli = "fastmail_cli:main"
+fastmail-cli = "fastmail_cli.cli:main"
 
 [build-system]
 requires = ["hatchling"]
