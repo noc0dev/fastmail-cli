@@ -1,7 +1,7 @@
 [project]
 name = "fastmail-cli"
 version = "0.1.1"
-description = "Read-only CLI for agents to access Fastmail via JMAP"
+description = "CLI for AI agents to access Fastmail via JMAP - draft responses without sending"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"

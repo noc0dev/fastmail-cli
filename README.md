@@ -5,7 +5,7 @@
 <h1 align="center">fastmail-cli</h1>
 
 <p align="center">
-  <strong>Read-only email access for AI agents via JMAP.</strong>
+  <strong>Email access for AI agents via JMAP. Draft responses without sending.</strong>
 </p>
 
 <p align="center">
@@ -48,6 +48,22 @@ fastmail-cli help                              # list commands
 fastmail-cli email.query --limit 5             # recent emails
 fastmail-cli email.get --ids '["M123"]'        # get by ID
 fastmail-cli mailbox.query                     # list mailboxes
+```
+
+### Create Drafts (Safe for AI Agents)
+
+```bash
+# Create a draft - human reviews in Fastmail UI before sending
+fastmail-cli email.draft \
+  --to "recipient@example.com" \
+  --subject "Re: Your question" \
+  --body "Here's the response..."
+
+# Draft with body from file
+fastmail-cli email.draft \
+  --to "user@example.com" \
+  --subject "Report" \
+  --body @report.txt
 ```
 
 All output is JSON with `ok`, `command`, `meta`, and `data`/`error` fields.
