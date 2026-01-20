@@ -2,12 +2,18 @@
   <img src="asset/mascot.png" alt="Fastmail CLI mascot" width="300">
 </p>
 
-# Fastmail CLI
+<h1 align="center">Fastmail CLI</h1>
 
-[![PyPI version](https://badge.fury.io/py/fastmail-cli.svg)](https://pypi.org/project/fastmail-cli/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+<p align="center">
+  <strong>Read-only email access for AI agents via JMAP.</strong>
+</p>
 
-Read-only CLI for agents to access Fastmail via JMAP.
+<p align="center">
+  <a href="https://pypi.org/project/fastmail-cli/"><img src="https://badge.fury.io/py/fastmail-cli.svg" alt="PyPI version"></a>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+</p>
+
+---
 
 ## Installation
 
