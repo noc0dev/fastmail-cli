@@ -431,6 +431,10 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
             else:
                 references = original.message_id
 
+        # Set from address to the address that received the original email
+        # This ensures replies come from the correct identity (e.g., joseph@noc0.dev not turian@fastmail.com)
+        from_addr = original.to[0] if original.to else None
+
         # Find the Drafts mailbox
         drafts_mailbox_id = find_drafts_mailbox_id(client, account_id)
 
@@ -447,6 +451,7 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
         email = Email(
             mailbox_ids={drafts_mailbox_id: True},
             keywords={"$draft": True},
+            mail_from=[from_addr] if from_addr else None,
             to=to_addrs,
             cc=cc_addrs,
             subject=subject,
