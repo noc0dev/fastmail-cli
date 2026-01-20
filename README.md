@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/mascot.png" alt="Fastmail CLI mascot" width="300">
+  <img src="https://raw.githubusercontent.com/noc0dev/fastmail-cli/main/assets/mascot.png" alt="Fastmail CLI mascot" width="300">
 </p>
 
 <h1 align="center">fastmail-cli</h1>
@@ -18,7 +18,7 @@
 ## Demo
 
 <p align="left">
-  <img src="assets/demo.gif" alt="Demo">
+  <img src="https://raw.githubusercontent.com/noc0dev/fastmail-cli/main/assets/demo.gif" alt="Demo">
 </p>
 
 ---
