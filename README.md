@@ -18,7 +18,7 @@
 ## Demo
 
 <p align="center">
-  <img src="assets/demo.mp4" alt="Demo" width="400">
+  <img src="assets/demo.gif" alt="Demo" width="400">
 </p>
 
 ---
