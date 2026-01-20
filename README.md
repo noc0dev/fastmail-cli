@@ -19,8 +19,12 @@
 
 ```bash
 uv add fastmail-cli
-# or
-pip install fastmail-cli
+```
+
+Or run without installing:
+
+```bash
+uvx fastmail-cli help
 ```
 
 ## Setup
