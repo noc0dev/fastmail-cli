@@ -44,48 +44,29 @@ export FASTMAIL_API_TOKEN="fmu1-..."  # from Fastmail Settings → Integrations
 ## Usage
 
 ```bash
-fastmail-cli help                              # list commands
-fastmail-cli email.query --limit 5             # recent emails
-fastmail-cli email.get --ids '["M123"]'        # get by ID
-fastmail-cli mailbox.query                     # list mailboxes
-```
+# Read
+fastmail-cli email.query --limit 5                    # recent emails
+fastmail-cli email.query --filter '{"from":"alice"}'  # search
+fastmail-cli email.get --ids '["M123"]'               # full email by ID
+fastmail-cli mailbox.query                            # list mailboxes
+fastmail-cli thread.get --ids '["T456"]'              # get thread
 
-### Create Drafts (Safe for AI Agents)
+# Draft (safe for AI agents - human reviews before sending)
+fastmail-cli email.draft --to "bob@x.com" --subject "Hi" --body "..."
+fastmail-cli email.draft-reply --id "M123" --body "Thanks!"
+fastmail-cli email.draft-reply --id "M123" --body @reply.txt --reply-all
 
-```bash
-# Create a draft - human reviews in Fastmail UI before sending
-fastmail-cli email.draft \
-  --to "recipient@example.com" \
-  --subject "Re: Your question" \
-  --body "Here's the response..."
-
-# Draft with body from file
-fastmail-cli email.draft \
-  --to "user@example.com" \
-  --subject "Report" \
-  --body @report.txt
-```
-
-### Draft Replies to Existing Emails
-
-```bash
-# Reply to an email (auto-threads, auto-sets subject)
-fastmail-cli email.draft-reply \
-  --id "M12345" \
-  --body "Thanks for reaching out..."
-
-# Reply-all to include all original recipients
-fastmail-cli email.draft-reply \
-  --id "M12345" \
-  --body "Replying to everyone..." \
-  --reply-all
+# Advanced
+fastmail-cli email.changes --since-state "abc123"     # poll for changes
+fastmail-cli searchsnippet.get --email-ids '["M1"]' --filter '{"text":"foo"}'
+fastmail-cli describe email.query                     # show command options
 ```
 
 All output is JSON with `ok`, `command`, `meta`, and `data`/`error` fields.
 
 ## Required Reading
 
-- [Claude Code Email Productivity: MCP Agents](https://harper.blog/2025/12/03/claude-code-email-productivity-mcp-agents/)
+- [Getting Claude Code to do my emails](https://harper.blog/2025/12/03/claude-code-email-productivity-mcp-agents/)
 - [jmap-mcp](https://github.com/obra/jmap-mcp)
 
 ## License
