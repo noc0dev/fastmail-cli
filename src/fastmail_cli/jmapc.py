@@ -374,7 +374,7 @@ def handle_email_draft(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         return 6, envelope(False, "email.draft", vars(args), meta_block(args.host, "unknown", []), error=err)
 
 
-def handle_email_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
+def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
     """Create a draft reply to an existing email."""
     try:
         client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
@@ -900,7 +900,7 @@ def add_connection_opts(p: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="jmapc-cli", description="Read-only JMAP CLI (JSON in/out)")
+    parser = argparse.ArgumentParser(prog="fastmail-cli", description="Read-only JMAP CLI (JSON in/out)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     h = sub.add_parser("help", help="List commands")
@@ -1016,7 +1016,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "email.query": handle_email_query,
         "email.get": handle_email_get,
         "email.draft": handle_email_draft,
-        "email.draft-reply": handle_email_reply,
+        "email.draft-reply": handle_email_draft_reply,
         "email.changes": handle_email_changes,
         "email.query-changes": handle_email_query_changes,
         "mailbox.query": handle_mailbox_query,

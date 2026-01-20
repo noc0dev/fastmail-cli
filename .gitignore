@@ -12,3 +12,4 @@ wheels/
 # Editor files
 *.swp
 *~
+.aider*

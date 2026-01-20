@@ -66,7 +66,7 @@ fastmail-cli email.draft \
   --body @report.txt
 ```
 
-### Reply to Existing Emails
+### Draft Replies to Existing Emails
 
 ```bash
 # Reply to an email (auto-threads, auto-sets subject)

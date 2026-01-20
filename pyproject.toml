@@ -30,7 +30,7 @@ Repository = "https://github.com/noc0dev/fastmail-cli"
 Issues = "https://github.com/noc0dev/fastmail-cli/issues"
 
 [project.scripts]
-fastmail-cli = "fastmail_cli:main"
+fastmail-cli = "fastmail_cli.cli:main"
 
 [build-system]
 requires = ["hatchling"]
