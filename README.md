@@ -2,7 +2,7 @@
   <img src="asset/mascot.png" alt="Fastmail CLI mascot" width="300">
 </p>
 
-<h1 align="center">Fastmail CLI</h1>
+<h1 align="center">fastmail-cli</h1>
 
 <p align="center">
   <strong>Read-only email access for AI agents via JMAP.</strong>
