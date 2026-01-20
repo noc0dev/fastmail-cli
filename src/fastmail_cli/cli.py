@@ -15,7 +15,7 @@ def main(argv=None) -> int:
     # Promote FASTMAIL_READONLY_API_TOKEN to JMAP_API_TOKEN if not already set
     if "JMAP_API_TOKEN" not in os.environ and DEFAULT_TOKEN_ENV in os.environ:
         os.environ["JMAP_API_TOKEN"] = os.environ[DEFAULT_TOKEN_ENV]
-    from jmapc_cli import main as jmap_main
+    from .jmapc import main as jmap_main
     return jmap_main(argv)
 
 
