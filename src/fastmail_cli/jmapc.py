@@ -335,10 +335,18 @@ def handle_email_draft(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         capabilities_server = session_json.get("capabilities", {}).keys()
         meta = meta_block(args.host, account_id, using, capabilities_server)
 
-        # Extract created email info
+        # Extract created email info (convert objects to dicts for JSON serialization)
+        created = {}
+        if set_response.created:
+            for k, v in set_response.created.items():
+                created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        not_created = {}
+        if set_response.not_created:
+            for k, v in set_response.not_created.items():
+                not_created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
         result_data = {
-            "created": set_response.created,
-            "notCreated": set_response.not_created,
+            "created": created,
+            "notCreated": not_created,
             "newState": set_response.new_state,
         }
 
@@ -456,10 +464,18 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
         capabilities_server = session_json.get("capabilities", {}).keys()
         meta = meta_block(args.host, account_id, using, capabilities_server)
 
-        # Extract created email info
+        # Extract created email info (convert objects to dicts for JSON serialization)
+        created = {}
+        if set_response.created:
+            for k, v in set_response.created.items():
+                created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
+        not_created = {}
+        if set_response.not_created:
+            for k, v in set_response.not_created.items():
+                not_created[k] = v.to_dict() if hasattr(v, 'to_dict') else v
         result_data = {
-            "created": set_response.created,
-            "notCreated": set_response.not_created,
+            "created": created,
+            "notCreated": not_created,
             "newState": set_response.new_state,
             "inReplyTo": args.id,
             "subject": subject,
