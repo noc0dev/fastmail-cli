@@ -28,7 +28,7 @@ from jmapc.methods.email import (
     EmailQueryChanges,
     EmailSet,
 )
-from jmapc.methods.mailbox import MailboxQuery, MailboxGet
+from jmapc.methods.mailbox import MailboxQuery
 from jmapc.methods.thread import ThreadGet
 from jmapc.methods.search_snippet import SearchSnippetGet
 from jmapc.models import Comparator, Email, EmailAddress, EmailBodyValue
