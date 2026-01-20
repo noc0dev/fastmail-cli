@@ -492,24 +492,24 @@ def handle_email_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
             "subject": subject,
         }
 
-        return 0, envelope(True, "email.reply", vars(args), meta, data=result_data)
+        return 0, envelope(True, "email.draft-reply", vars(args), meta, data=result_data)
     except ValueError as exc:
         err = {"type": "validationError", "message": str(exc), "details": {}}
-        return 2, envelope(False, "email.reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+        return 2, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
     except ClientError as exc:
         err = {
             "type": "jmapError",
             "message": str(exc),
             "details": {"responses": client_error_details(exc)},
         }
-        return 5, envelope(False, "email.reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+        return 5, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
     except requests.HTTPError as exc:
         code = http_exit_code(exc.response.status_code)
         err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
-        return code, envelope(False, "email.reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+        return code, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
     except Exception as exc:
         err = {"type": "runtimeError", "message": str(exc), "details": {}}
-        return 6, envelope(False, "email.reply", vars(args), meta_block(args.host, "unknown", []), error=err)
+        return 6, envelope(False, "email.draft-reply", vars(args), meta_block(args.host, "unknown", []), error=err)
 
 
 def handle_mailbox_query(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
@@ -827,7 +827,7 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
                 {"name": "references", "type": "json", "required": False},
             ],
         },
-        "email.reply": {
+        "email.draft-reply": {
             "summary": "Create draft reply to existing email (auto-threads)",
             "options": [
                 {"name": "id", "type": "string", "required": True},
@@ -946,7 +946,7 @@ def build_parser() -> argparse.ArgumentParser:
     ed.add_argument("--in-reply-to", help="Message-ID(s) JSON array for threading")
     ed.add_argument("--references", help="References JSON array for threading")
 
-    er = sub.add_parser("email.reply", help="Create draft reply to existing email")
+    er = sub.add_parser("email.draft-reply", help="Create draft reply to existing email")
     add_connection_opts(er)
     er.set_defaults(json="compact")
     er.add_argument("--id", required=True, help="Email ID to reply to")
@@ -1020,7 +1020,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "email.query": handle_email_query,
         "email.get": handle_email_get,
         "email.draft": handle_email_draft,
-        "email.reply": handle_email_reply,
+        "email.draft-reply": handle_email_reply,
         "email.changes": handle_email_changes,
         "email.query-changes": handle_email_query_changes,
         "mailbox.query": handle_mailbox_query,

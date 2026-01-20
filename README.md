@@ -70,12 +70,12 @@ fastmail-cli email.draft \
 
 ```bash
 # Reply to an email (auto-threads, auto-sets subject)
-fastmail-cli email.reply \
+fastmail-cli email.draft-reply \
   --id "M12345" \
   --body "Thanks for reaching out..."
 
 # Reply-all to include all original recipients
-fastmail-cli email.reply \
+fastmail-cli email.draft-reply \
   --id "M12345" \
   --body "Replying to everyone..." \
   --reply-all
