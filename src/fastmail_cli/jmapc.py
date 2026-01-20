@@ -308,19 +308,14 @@ def handle_email_draft(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         # Parse from address
         from_addr = parse_email_addresses(args.mail_from) if args.mail_from else None
 
-        # Build body
-        body_value = args.body or ""
-        if args.body and args.body.startswith("@"):
-            body_value = parse_json_arg(args.body) if args.body.startswith("@") else args.body
-            if isinstance(body_value, dict):
-                body_value = json.dumps(body_value)
-
-        # Read body from file if @file syntax
-        if args.body and args.body.startswith("@") and not args.body.startswith("@-"):
+        # Build body - read from file (@file) or stdin (@-)
+        if args.body and args.body.startswith("@") and args.body != "@-":
             with open(args.body[1:], "r", encoding="utf-8") as fh:
                 body_value = fh.read()
         elif args.body == "@-":
             body_value = sys.stdin.read()
+        else:
+            body_value = args.body or ""
 
         # Create the email object
         email = Email(
@@ -448,13 +443,14 @@ def handle_email_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         # Find the Drafts mailbox
         drafts_mailbox_id = find_drafts_mailbox_id(client, account_id)
 
-        # Build body
-        body_value = args.body or ""
-        if args.body and args.body.startswith("@") and not args.body.startswith("@-"):
+        # Build body - read from file (@file) or stdin (@-)
+        if args.body and args.body.startswith("@") and args.body != "@-":
             with open(args.body[1:], "r", encoding="utf-8") as fh:
                 body_value = fh.read()
         elif args.body == "@-":
             body_value = sys.stdin.read()
+        else:
+            body_value = args.body or ""
 
         # Create the email object
         email = Email(
