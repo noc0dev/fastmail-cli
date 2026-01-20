@@ -32,6 +32,9 @@ Issues = "https://github.com/noc0dev/fastmail-cli/issues"
 [project.scripts]
 fastmail-cli = "fastmail_cli:main"
 
+[tool.hatch.build]
+include = ["fastmail_cli.py"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
