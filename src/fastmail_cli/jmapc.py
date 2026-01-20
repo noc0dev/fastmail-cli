@@ -713,6 +713,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    command_map = {
+        "help": handle_help,
+        "describe": handle_describe,
+        "session.get": handle_session_get,
+        "email.query": handle_email_query,
+        "email.get": handle_email_get,
+        "email.changes": handle_email_changes,
+        "email.query-changes": handle_email_query_changes,
+        "mailbox.query": handle_mailbox_query,
+        "thread.get": handle_thread_get,
+        "searchsnippet.get": handle_searchsnippet_get,
+        "events.listen": handle_events_listen,
+        "pipeline.run": handle_pipeline_run,
+    }
+
     # Enforce json mode compatibility before doing any work
     streaming_commands = {"events.listen"}
     if args.command in streaming_commands and args.json != "jsonl":
@@ -753,21 +768,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         json_dump(err, args.json)
         return 2
-
-    command_map = {
-        "help": handle_help,
-        "describe": handle_describe,
-        "session.get": handle_session_get,
-        "email.query": handle_email_query,
-        "email.get": handle_email_get,
-        "email.changes": handle_email_changes,
-        "email.query-changes": handle_email_query_changes,
-        "mailbox.query": handle_mailbox_query,
-        "thread.get": handle_thread_get,
-        "searchsnippet.get": handle_searchsnippet_get,
-        "events.listen": handle_events_listen,
-        "pipeline.run": handle_pipeline_run,
-    }
 
     handler = command_map.get(args.command)
     if handler is None:

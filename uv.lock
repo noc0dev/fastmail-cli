@@ -94,9 +94,9 @@ wheels = [
 ]
 
 [[package]]
-name = "fm"
+name = "fastmail-cli"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "jmapc" },
 ]
