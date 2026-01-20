@@ -431,9 +431,8 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
             else:
                 references = original.message_id
 
-        # Set from address to the address that received the original email
-        # This ensures replies come from the correct identity (e.g., joseph@noc0.dev not turian@fastmail.com)
-        from_addr = original.to[0] if original.to else None
+        # Parse from address if provided, otherwise let server use account default
+        from_addr = parse_email_addresses(args.mail_from) if args.mail_from else None
 
         # Find the Drafts mailbox
         drafts_mailbox_id = find_drafts_mailbox_id(client, account_id)
@@ -451,7 +450,7 @@ def handle_email_draft_reply(args: argparse.Namespace) -> Tuple[int, Dict[str, A
         email = Email(
             mailbox_ids={drafts_mailbox_id: True},
             keywords={"$draft": True},
-            mail_from=[from_addr] if from_addr else None,
+            mail_from=from_addr,
             to=to_addrs,
             cc=cc_addrs,
             subject=subject,
@@ -829,6 +828,7 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
                 {"name": "reply_all", "type": "flag", "required": False},
                 {"name": "to", "type": "string", "required": False},
                 {"name": "subject", "type": "string", "required": False},
+                {"name": "from", "type": "string", "required": False},
             ],
         },
         "email.changes": {
@@ -948,6 +948,7 @@ def build_parser() -> argparse.ArgumentParser:
     er.add_argument("--reply-all", action="store_true", help="Reply to all recipients")
     er.add_argument("--to", help="Override recipient(s)")
     er.add_argument("--subject", help="Override subject")
+    er.add_argument("--from", dest="mail_from", help="From address (default: account default)")
 
     ech = sub.add_parser("email.changes", help="Email/changes")
     add_connection_opts(ech)
