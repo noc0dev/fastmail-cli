@@ -91,6 +91,18 @@ def http_exit_code(status: int) -> int:
     return 3 if status in (401, 403) else 4
 
 
+_REDACTED_KEYS = frozenset({"api_token"})
+
+
+def _sanitize_args(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *args* with sensitive values redacted."""
+    sanitized = dict(args)
+    for key in _REDACTED_KEYS:
+        if key in sanitized and sanitized[key]:
+            sanitized[key] = "**REDACTED**"
+    return sanitized
+
+
 def envelope(
     ok: bool,
     command: str,
@@ -102,7 +114,7 @@ def envelope(
     out: Dict[str, Any] = {
         "ok": ok,
         "command": command,
-        "args": args,
+        "args": _sanitize_args(args),
         "meta": meta,
     }
     if ok:
