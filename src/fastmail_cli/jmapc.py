@@ -2,7 +2,7 @@
 """
 jmapc-cli: Read-only JMAP CLI (JSON in/out)
 
-Commands: session.get, email.query, email.get, mailbox.query, thread.get, pipeline.run
+Commands: session.get, email.query, email.get, email.read, mailbox.query, thread.get, pipeline.run
 Exit codes: 0 ok, 2 validation, 3 auth, 4 http, 5 jmap method error, 6 runtime.
 """
 
@@ -244,7 +244,8 @@ def handle_email_get(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         account_id = resolve_account_id(session_json, args.account)
         ids = parse_json_arg(args.ids)
         props = parse_json_arg(args.properties) if args.properties else None
-        call = EmailGet(ids=ids, properties=props)
+        fetch_all_body_values = getattr(args, "fetch_all_body_values", False)
+        call = EmailGet(ids=ids, properties=props, fetch_all_body_values=fetch_all_body_values)
         using, mrs = jmap_request(client, account_id, call, raise_errors=True)
         resp = mrs[0].response  # EmailGetResponse
         capabilities_server = session_json.get("capabilities", {}).keys()
@@ -267,6 +268,63 @@ def handle_email_get(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
     except Exception as exc:
         err = {"type": "runtimeError", "message": str(exc), "details": {}}
         return 6, envelope(False, "email.get", vars(args), meta_block(args.host, "unknown", []), error=err)
+
+
+def handle_email_read(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
+    try:
+        client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
+        account_id = resolve_account_id(session_json, args.account)
+
+        # Request specific properties for reading
+        props = ["subject", "from", "to", "cc", "bcc", "textBody", "bodyValues", "receivedAt", "messageId"]
+        call = EmailGet(ids=[args.id], properties=props, fetch_all_body_values=True)
+        using, mrs = jmap_request(client, account_id, call, raise_errors=True)
+        resp = mrs[0].response
+
+        if not resp.data:
+            raise ValueError(f"Email not found: {args.id}")
+
+        email = resp.data[0]
+
+        # Extract plain text body
+        body_text = ""
+        if email.text_body and email.body_values:
+            for part in email.text_body:
+                part_id = getattr(part, "part_id", None) or (part.get("partId") if isinstance(part, dict) else None)
+                if part_id and part_id in email.body_values:
+                    val = email.body_values[part_id]
+                    content = getattr(val, "value", None)
+                    if content:
+                        body_text += content
+
+        data = {
+            "id": getattr(email, "id", args.id),
+            "subject": email.subject,
+            "from": [a.to_dict() if hasattr(a, "to_dict") else a for a in email.mail_from] if email.mail_from else None,
+            "to": [a.to_dict() if hasattr(a, "to_dict") else a for a in email.to] if email.to else None,
+            "body": body_text.strip(),
+        }
+
+        capabilities_server = session_json.get("capabilities", {}).keys()
+        meta = meta_block(args.host, account_id, using, capabilities_server)
+        return 0, envelope(True, "email.read", vars(args), meta, data=data)
+    except ValueError as exc:
+        err = {"type": "validationError", "message": str(exc), "details": {}}
+        return 2, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except ClientError as exc:
+        err = {
+            "type": "jmapError",
+            "message": str(exc),
+            "details": {"responses": client_error_details(exc)},
+        }
+        return 5, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except requests.HTTPError as exc:
+        code = http_exit_code(exc.response.status_code)
+        err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
+        return code, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except Exception as exc:
+        err = {"type": "runtimeError", "message": str(exc), "details": {}}
+        return 6, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
 
 
 def find_drafts_mailbox_id(client: Client, account_id: str) -> str:
@@ -817,6 +875,13 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
             "options": [
                 {"name": "ids", "type": "json", "required": True},
                 {"name": "properties", "type": "json", "required": False},
+                {"name": "fetch_all_body_values", "type": "flag", "required": False},
+            ],
+        },
+        "email.read": {
+            "summary": "Fetch email and return subject + plain text body",
+            "options": [
+                {"name": "id", "type": "string", "required": True},
             ],
         },
         "email.draft": {
@@ -939,6 +1004,12 @@ def build_parser() -> argparse.ArgumentParser:
     eg.set_defaults(json="compact")
     eg.add_argument("--ids", required=True, help="JSON array of ids or @file/@-")
     eg.add_argument("--properties", help="JSON array of properties")
+    eg.add_argument("--fetch-all-body-values", action="store_true", help="Fetch all body values")
+
+    erd = sub.add_parser("email.read", help="Fetch email and return subject + plain text body")
+    add_connection_opts(erd)
+    erd.set_defaults(json="compact")
+    erd.add_argument("--id", required=True, help="Email ID")
 
     ed = sub.add_parser("email.draft", help="Create draft email (does not send)")
     add_connection_opts(ed)
@@ -1010,6 +1081,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pl = sub.add_parser("pipeline.run", help="Run raw multi-call pipeline")
     add_connection_opts(pl)
+    pl.set_defaults(json="compact")
     pl.add_argument("--input", required=True, help="Pipeline JSON (inline/@file/@-)")
     pl.add_argument("--allow-unsafe", action="store_true", help="Bypass read-only allowlist")
 
@@ -1026,6 +1098,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "session.get": handle_session_get,
         "email.query": handle_email_query,
         "email.get": handle_email_get,
+        "email.read": handle_email_read,
         "email.draft": handle_email_draft,
         "email.draft-reply": handle_email_draft_reply,
         "email.changes": handle_email_changes,
