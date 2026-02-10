@@ -2,17 +2,19 @@
 """
 jmapc-cli: Read-only JMAP CLI (JSON in/out)
 
-Commands: session.get, email.query, email.get, email.read, mailbox.query, thread.get, pipeline.run
+Commands: session.get, email.query, email.get, email.read, mailbox.query, thread.get, blob.download, pipeline.run
 Exit codes: 0 ok, 2 validation, 3 auth, 4 http, 5 jmap method error, 6 runtime.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import requests
@@ -32,6 +34,27 @@ from jmapc.methods.mailbox import MailboxQuery
 from jmapc.methods.thread import ThreadGet
 from jmapc.methods.search_snippet import SearchSnippetGet
 from jmapc.models import Comparator, Email, EmailAddress, EmailBodyValue
+
+
+def expand_download_url(
+    template: str, *, account_id: str, blob_id: str, name: str, content_type: str,
+) -> str:
+    """Expand a JMAP downloadUrl template with percent-encoded variables.
+
+    JMAP servers provide a downloadUrl URI template (RFC 6570 Level 1) like:
+        https://example.com/download/{accountId}/{blobId}/{name}?type={type}
+
+    Plain str.format() is wrong: values like "file #1.pdf" or "text/plain"
+    contain reserved characters that must be percent-encoded before
+    substitution to avoid changing URL semantics.
+    """
+    from urllib.parse import quote
+    return template.format(
+        accountId=quote(account_id, safe=""),
+        blobId=quote(blob_id, safe=""),
+        name=quote(name, safe=""),
+        type=quote(content_type, safe=""),
+    )
 
 
 def utc_now_iso() -> str:
@@ -276,7 +299,7 @@ def handle_email_read(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         account_id = resolve_account_id(session_json, args.account)
 
         # Request specific properties for reading
-        props = ["subject", "from", "to", "cc", "bcc", "textBody", "bodyValues", "receivedAt", "messageId"]
+        props = ["subject", "from", "to", "cc", "bcc", "textBody", "bodyValues", "receivedAt", "messageId", "attachments"]
         call = EmailGet(ids=[args.id], properties=props, fetch_all_body_values=True)
         using, mrs = jmap_request(client, account_id, call, raise_errors=True)
         resp = mrs[0].response
@@ -297,12 +320,25 @@ def handle_email_read(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
                     if content:
                         body_text += content
 
+        # Extract attachment metadata
+        attachments = []
+        if email.attachments:
+            for att in email.attachments:
+                attachments.append({
+                    "partId": att.part_id,
+                    "blobId": att.blob_id,
+                    "name": att.name,
+                    "type": att.type,
+                    "size": att.size,
+                })
+
         data = {
             "id": getattr(email, "id", args.id),
             "subject": email.subject,
             "from": [a.to_dict() if hasattr(a, "to_dict") else a for a in email.mail_from] if email.mail_from else None,
             "to": [a.to_dict() if hasattr(a, "to_dict") else a for a in email.to] if email.to else None,
             "body": body_text.strip(),
+            "attachments": attachments,
         }
 
         capabilities_server = session_json.get("capabilities", {}).keys()
@@ -702,6 +738,57 @@ def handle_pipeline_run(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         return 6, envelope(False, "pipeline.run", vars(args), meta_block(args.host, "unknown", []), error=err)
 
 
+def handle_blob_download(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
+    try:
+        session_json = discover_session(args.host, args.timeout, not args.insecure, token=args.api_token)
+        account_id = resolve_account_id(session_json, args.account)
+        download_url_template = session_json.get("downloadUrl")
+        if not download_url_template:
+            raise ValueError("Server session does not provide a downloadUrl")
+
+        blob_url = expand_download_url(
+            download_url_template,
+            account_id=account_id,
+            blob_id=args.blob_id,
+            name=args.name,
+            content_type=args.type,
+        )
+        headers = {"Authorization": f"Bearer {args.api_token}"}
+        resp = requests.get(blob_url, headers=headers, stream=True, timeout=args.timeout, verify=not args.insecure)
+        resp.raise_for_status()
+
+        output_path = Path(args.output)
+        sha256 = hashlib.sha256()
+        bytes_written = 0
+        with open(output_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=65536):
+                f.write(chunk)
+                sha256.update(chunk)
+                bytes_written += len(chunk)
+
+        capabilities_server = session_json.get("capabilities", {}).keys()
+        meta = meta_block(args.host, account_id, [], capabilities_server)
+        data = {
+            "blobId": args.blob_id,
+            "name": args.name,
+            "contentType": args.type,
+            "output": str(output_path),
+            "bytesWritten": bytes_written,
+            "sha256": sha256.hexdigest(),
+        }
+        return 0, envelope(True, "blob.download", vars(args), meta, data=data)
+    except ValueError as exc:
+        err = {"type": "validationError", "message": str(exc), "details": {}}
+        return 2, envelope(False, "blob.download", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except requests.HTTPError as exc:
+        code = http_exit_code(exc.response.status_code)
+        err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
+        return code, envelope(False, "blob.download", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except Exception as exc:
+        err = {"type": "runtimeError", "message": str(exc), "details": {}}
+        return 6, envelope(False, "blob.download", vars(args), meta_block(args.host, "unknown", []), error=err)
+
+
 def handle_searchsnippet_get(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
     try:
         client, session_json = build_client(args.host, args.api_token, args.timeout, not args.insecure)
@@ -948,6 +1035,15 @@ def COMMAND_SPECS() -> Dict[str, Dict[str, Any]]:
                 {"name": "properties", "type": "json", "required": False},
             ],
         },
+        "blob.download": {
+            "summary": "Download blob to file",
+            "options": [
+                {"name": "blob_id", "type": "string", "required": True},
+                {"name": "name", "type": "string", "required": True},
+                {"name": "type", "type": "string", "required": True},
+                {"name": "output", "type": "string", "required": True},
+            ],
+        },
         "events.listen": {
             "summary": "Stream events (read-only)",
             "options": [
@@ -1070,6 +1166,14 @@ def build_parser() -> argparse.ArgumentParser:
     ss.add_argument("--filter", help="EmailQueryFilter JSON")
     ss.add_argument("--properties", nargs="+", help="Snippet properties")
 
+    bd = sub.add_parser("blob.download", help="Download blob to file")
+    add_connection_opts(bd)
+    bd.set_defaults(json="compact")
+    bd.add_argument("--blob-id", required=True, help="Blob ID to download")
+    bd.add_argument("--name", required=True, help="Filename for the download")
+    bd.add_argument("--type", required=True, help="MIME type (e.g. application/pdf)")
+    bd.add_argument("--output", required=True, help="Output file path")
+
     ev = sub.add_parser("events.listen", help="Listen to JMAP event stream")
     add_connection_opts(ev)
     ev.set_defaults(json="jsonl")
@@ -1106,6 +1210,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "mailbox.query": handle_mailbox_query,
         "thread.get": handle_thread_get,
         "searchsnippet.get": handle_searchsnippet_get,
+        "blob.download": handle_blob_download,
         "events.listen": handle_events_listen,
         "pipeline.run": handle_pipeline_run,
     }
