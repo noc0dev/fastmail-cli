@@ -36,6 +36,27 @@ from jmapc.methods.search_snippet import SearchSnippetGet
 from jmapc.models import Comparator, Email, EmailAddress, EmailBodyValue
 
 
+def expand_download_url(
+    template: str, *, account_id: str, blob_id: str, name: str, content_type: str,
+) -> str:
+    """Expand a JMAP downloadUrl template with percent-encoded variables.
+
+    JMAP servers provide a downloadUrl URI template (RFC 6570 Level 1) like:
+        https://example.com/download/{accountId}/{blobId}/{name}?type={type}
+
+    Plain str.format() is wrong: values like "file #1.pdf" or "text/plain"
+    contain reserved characters that must be percent-encoded before
+    substitution to avoid changing URL semantics.
+    """
+    from urllib.parse import quote
+    return template.format(
+        accountId=quote(account_id, safe=""),
+        blobId=quote(blob_id, safe=""),
+        name=quote(name, safe=""),
+        type=quote(content_type, safe=""),
+    )
+
+
 def utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
@@ -725,11 +746,12 @@ def handle_blob_download(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]
         if not download_url_template:
             raise ValueError("Server session does not provide a downloadUrl")
 
-        blob_url = download_url_template.format(
-            accountId=account_id,
-            blobId=args.blob_id,
+        blob_url = expand_download_url(
+            download_url_template,
+            account_id=account_id,
+            blob_id=args.blob_id,
             name=args.name,
-            type=args.type,
+            content_type=args.type,
         )
         headers = {"Authorization": f"Bearer {args.api_token}"}
         resp = requests.get(blob_url, headers=headers, stream=True, timeout=args.timeout, verify=not args.insecure)
