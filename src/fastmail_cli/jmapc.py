@@ -308,6 +308,20 @@ def handle_email_read(args: argparse.Namespace) -> Tuple[int, Dict[str, Any]]:
         capabilities_server = session_json.get("capabilities", {}).keys()
         meta = meta_block(args.host, account_id, using, capabilities_server)
         return 0, envelope(True, "email.read", vars(args), meta, data=data)
+    except ValueError as exc:
+        err = {"type": "validationError", "message": str(exc), "details": {}}
+        return 2, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except ClientError as exc:
+        err = {
+            "type": "jmapError",
+            "message": str(exc),
+            "details": {"responses": client_error_details(exc)},
+        }
+        return 5, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
+    except requests.HTTPError as exc:
+        code = http_exit_code(exc.response.status_code)
+        err = {"type": "httpError", "message": str(exc), "details": {"status": exc.response.status_code}}
+        return code, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
     except Exception as exc:
         err = {"type": "runtimeError", "message": str(exc), "details": {}}
         return 6, envelope(False, "email.read", vars(args), meta_block(args.host, "unknown", []), error=err)
